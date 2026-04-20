@@ -139,9 +139,54 @@ fn get_epoch_time() -> u64 {
 }
 
 fn handle_restore(git_repo: &str, target_path: &str) {
-    println!("Restoring from target path git repo: {} {}", git_repo, target_path);
+    println!("Restoring from target path to git repo: {} {}", git_repo, target_path);
 
-    // TODO: Implement restore logic
+    let target_path_exists = Path::new(target_path).exists();
+
+    if !target_path_exists {
+        println!("target_path does not exist: {target_path}");
+        std::process::exit(1);
+    }
+
+    restore_files_to_git_repo(target_path, git_repo);
+}
+
+fn restore_files_to_git_repo(target_path: &str, git_repo: &str) {
+    println!("Restoring files from {target_path} to git repo at {git_repo}");
+
+    let repo_files = collect_relative_files(target_path);
+    copy_files_to_run_dir(target_path, git_repo, repo_files);
+
+
+fn collect_relative_files(root: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let root_path = Path::new(root);
+    let mut files = Vec::new();
+    collect_relative_files_recursive(root_path, root_path, &mut files)?;
+    Ok(files)
+}
+
+fn collect_relative_files_recursive(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            collect_relative_files_recursive(root, &path, files)?;
+            continue;
+        }
+
+        if path.is_file() {
+            let relative = path.strip_prefix(root)?;
+            files.push(relative.to_string_lossy().to_string());
+        }
+    }
+
+    Ok(())
+}
 }
 
 fn has_two_or_three_args_and_correct_copy_or_restore(args: &[String]) -> bool {
