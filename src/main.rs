@@ -41,37 +41,22 @@ fn main() {
     }
 }
 
-fn list_changed_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+fn list_tracked_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let repo = Repository::open(repo_path)?;
 
-    // Get the HEAD commit
-    let head = repo.head()?;
-    let commit = head.peel_to_commit()?;
-    let tree = commit.tree()?;
+    // Use the git index so we copy all tracked files in the repository.
+    let index = repo.index()?;
+    let files = index
+        .iter()
+        .filter_map(|entry| std::str::from_utf8(&entry.path).ok().map(|s| s.to_string()))
+        .collect();
 
-    // Get the diff between HEAD and working directory
-    let diff = repo.diff_tree_to_workdir(Some(&tree), None)?;
-
-    // Collect changed files into a vector
-    let mut changed_files = Vec::new();
-    diff.foreach(
-        &mut |delta, _| {
-            if let Some(path) = delta.new_file().path() {
-                changed_files.push(path.to_string_lossy().to_string());
-            }
-            true
-        },
-        None,
-        None,
-        None,
-    )?;
-
-    Ok(changed_files)
+    Ok(files)
 }
 
 fn handle_copy(path: &str) {
     println!("Copying from: {path}");
-    let repo_files = list_changed_repo_files(path);
+    let repo_files = list_tracked_repo_files(path);
     mkdir_and_process_files(path, repo_files);
 }
 
