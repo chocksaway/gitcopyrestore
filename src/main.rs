@@ -48,7 +48,13 @@ fn list_tracked_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::
     let index = repo.index()?;
     let files = index
         .iter()
-        .filter_map(|entry| std::str::from_utf8(&entry.path).ok().map(|s| s.to_string()))
+        .filter_map(|entry| {
+            let path = std::str::from_utf8(&entry.path).ok()?;
+            if path == ".gitignore" {
+                return None;
+            }
+            Some(path.to_string())
+        })
         .collect();
 
     Ok(files)
