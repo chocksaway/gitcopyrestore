@@ -14,9 +14,9 @@ fn main() {
         }
     }
 
-    // let args: Vec<String> = std::env::args().skip(1).collect();
-    let args = vec!["--copy".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
-    //let args = vec!["--restore".to_string(), "path".to_string(), "repo".to_string()];
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    //let args = vec!["--copy".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
+    //let args = vec!["--restore".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore/runs/1778082154_gitcopyrestore".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
 
     if !has_two_or_three_args_and_correct_copy_or_restore(&args) {
         println!("Expected 2 or 3 command-line arguments.");
@@ -27,7 +27,7 @@ fn main() {
     match args[0].as_str() {
         "--copy" => {
             let path = &args[1];
-            handle_copy(path);
+            handle_copy(path);  // source path
         }
         "--restore" => {
             let git_repo = &args[1];
@@ -66,29 +66,29 @@ fn handle_copy(path: &str) {
     mkdir_and_process_files(path, repo_files);
 }
 
-fn mkdir_and_process_files(path: &str, repo_files: Result<Vec<String>, Box<dyn std::error::Error>>) {
-    let last_path = find_last_part_of_path(path).unwrap_or("unknown_repo");
+fn mkdir_and_process_files(src_path: &str, files: Result<Vec<String>, Box<dyn std::error::Error>>) {
+    let last_path = find_last_part_of_path(src_path).unwrap_or("unknown_repo");
 
     if last_path.is_empty() {
         println!("Could not determine the last part of the path. Using 'unknown_repo' as the directory name.");
     }
 
-    let run_dir = format!("runs/{}{}{}", get_epoch_time(), "_", last_path);
-    if let Err(err) = fs::create_dir(&run_dir) {
-        println!("Failed to create run directory '{run_dir}': {err}");
+    let dest_path = format!("runs/{}{}{}", get_epoch_time(), "_", last_path);
+    if let Err(err) = fs::create_dir(&dest_path) {
+        println!("Failed to create run directory '{dest_path}': {err}");
         return;
     }
 
-    copy_files(true, path, &run_dir, repo_files);
+    copy_files(true, src_path, &dest_path, files);
 }
 
-fn copy_files(create_dir: bool, path: &str, run_dir: &str, repo_files: Result<Vec<String>, Box<dyn std::error::Error>>) {
-    match repo_files {
+fn copy_files(create_dir: bool, src_path: &str, dest_path: &str, files: Result<Vec<String>, Box<dyn std::error::Error>>) {
+    match files {
         Ok(files) => {
-            println!("Files to copy from {path}:");
+            println!("Files to copy from {src_path}:");
             for file in files {
-                let src = Path::new(path).join(&file);
-                let dst = Path::new(&run_dir).join(&file);
+                let src = Path::new(src_path).join(&file);
+                let dst = Path::new(&dest_path).join(&file);
 
                 if create_dir {
                     if let Some(parent) = dst.parent() {
@@ -131,24 +131,24 @@ fn get_epoch_time() -> u64 {
         .unwrap_or(0)
 }
 
-fn handle_restore(git_repo: &str, target_path: &str) {
-    println!("Restoring from target path to git repo: {} {}", git_repo, target_path);
+fn handle_restore(src_path: &str, dest_path: &str) {
+    println!("Restoring from target path to git repo: {} {}", src_path, dest_path);
 
-    let target_path_exists = Path::new(target_path).exists();
+    let target_path_exists = Path::new(dest_path).exists();
 
     if !target_path_exists {
-        println!("target_path does not exist: {target_path}");
+        println!("target_path does not exist: {dest_path}");
         std::process::exit(1);
     }
 
-    restore_files_to_git_repo(target_path, git_repo);
+    restore_files_to_git_repo(src_path, dest_path);
 }
 
-fn restore_files_to_git_repo(target_path: &str, git_repo: &str) {
-    println!("Restoring files from {target_path} to git repo at {git_repo}");
+fn restore_files_to_git_repo(src_path: &str, dest_path: &str) {
+    println!("Restoring files from {src_path} to git repo at {dest_path}");
 
-    let repo_files = collect_relative_files(target_path);
-    copy_files(false, target_path, git_repo, repo_files);
+    let files = collect_relative_files(src_path);
+    copy_files(true, src_path, &dest_path, files);
 }
 
 
@@ -248,6 +248,33 @@ mod tests {
         assert!(copied.is_file());
         let copied_contents = fs::read_to_string(copied).expect("read copied file");
         assert_eq!(copied_contents, "hello copy");
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn restore_files_to_git_repo_copies_nested_file_when_dest_parent_missing() {
+        let base = std::env::temp_dir().join(format!(
+            "gitcopyrestore_restore_test_{}",
+            get_epoch_time()
+        ));
+        let snapshot_root = base.join("snapshot");
+        let repo_root = base.join("repo");
+        let rel_file = "nested/file.txt";
+
+        fs::create_dir_all(snapshot_root.join("nested")).expect("create snapshot nested dir");
+        fs::create_dir_all(&repo_root).expect("create repo dir");
+        fs::write(snapshot_root.join(rel_file), "restored").expect("write snapshot file");
+
+        restore_files_to_git_repo(
+            snapshot_root.to_str().expect("snapshot path utf8"),
+            repo_root.to_str().expect("repo path utf8"),
+        );
+
+        let restored = repo_root.join(rel_file);
+        assert!(restored.is_file());
+        let restored_contents = fs::read_to_string(restored).expect("read restored file");
+        assert_eq!(restored_contents, "restored");
 
         let _ = fs::remove_dir_all(base);
     }
