@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use git2::Repository;
 
 fn main() {
-    const USAGE: &str = "Usage: gitcr --copy path_to_repo | --restore path_to_git_repo";
+    const USAGE: &str = "Usage: gitcr --copy path_to_repo | --restore copy_path path_to_git_repo";
 
     if !Path::new("runs").exists() {
         if let Err(err) = fs::create_dir("runs") {
