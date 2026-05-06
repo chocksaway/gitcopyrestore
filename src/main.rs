@@ -186,7 +186,7 @@ fn collect_relative_files_recursive(
     Ok(())
 }
 fn has_two_or_three_args_and_correct_copy_or_restore(args: &[String]) -> bool {
-    if args.len() != 2 && args.len() != 3 {
+    if args.len() < 2 || args.len() > 3 {
         return false;
     }
 
@@ -194,8 +194,14 @@ fn has_two_or_three_args_and_correct_copy_or_restore(args: &[String]) -> bool {
         return false;
     }
 
-    if args[0] == "--restore" && args.len() == 3 {
-        return true;
+    // --copy requires exactly 2 args
+    if args[0] == "--copy" && args.len() != 2 {
+        return false;
+    }
+
+    // --restore requires exactly 3 args
+    if args[0] == "--restore" && args.len() != 3 {
+        return false;
     }
 
     true
@@ -222,6 +228,12 @@ mod tests {
     fn check_there_are_three_args_for_a_restore() {
         let args = vec!["--restore".to_string(), "path".to_string(), "repo".to_string()];
         assert!(has_two_or_three_args_and_correct_copy_or_restore(&args));
+    }
+
+    #[test]
+    fn reject_restore_with_only_two_args() {
+        let args = vec!["--restore".to_string(), "path".to_string()];
+        assert!(!has_two_or_three_args_and_correct_copy_or_restore(&args));
     }
 
     #[test]
