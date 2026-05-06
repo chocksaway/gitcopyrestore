@@ -79,10 +79,10 @@ fn mkdir_and_process_files(path: &str, repo_files: Result<Vec<String>, Box<dyn s
         return;
     }
 
-    copy_files_to_run_dir(path, &run_dir, repo_files);
+    copy_files(true, path, &run_dir, repo_files);
 }
 
-fn copy_files_to_run_dir(path: &str, run_dir: &str, repo_files: Result<Vec<String>, Box<dyn std::error::Error>>) {
+fn copy_files(create_dir: bool, path: &str, run_dir: &str, repo_files: Result<Vec<String>, Box<dyn std::error::Error>>) {
     match repo_files {
         Ok(files) => {
             println!("Files to copy from {path}:");
@@ -90,10 +90,12 @@ fn copy_files_to_run_dir(path: &str, run_dir: &str, repo_files: Result<Vec<Strin
                 let src = Path::new(path).join(&file);
                 let dst = Path::new(&run_dir).join(&file);
 
-                if let Some(parent) = dst.parent() {
-                    if let Err(err) = fs::create_dir_all(parent) {
-                        println!("Failed to create parent directory for '{file}': {err}");
-                        continue;
+                if create_dir {
+                    if let Some(parent) = dst.parent() {
+                        if let Err(err) = fs::create_dir_all(parent) {
+                            println!("Failed to create parent directory for '{file}': {err}");
+                            continue;
+                        }
                     }
                 }
 
@@ -146,7 +148,8 @@ fn restore_files_to_git_repo(target_path: &str, git_repo: &str) {
     println!("Restoring files from {target_path} to git repo at {git_repo}");
 
     let repo_files = collect_relative_files(target_path);
-    copy_files_to_run_dir(target_path, git_repo, repo_files);
+    copy_files(false, target_path, git_repo, repo_files);
+}
 
 
 fn collect_relative_files(root: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -178,8 +181,6 @@ fn collect_relative_files_recursive(
 
     Ok(())
 }
-}
-
 fn has_two_or_three_args_and_correct_copy_or_restore(args: &[String]) -> bool {
     if args.len() != 2 && args.len() != 3 {
         return false;
@@ -217,5 +218,37 @@ mod tests {
     fn check_there_are_three_args_for_a_restore() {
         let args = vec!["--restore".to_string(), "path".to_string(), "repo".to_string()];
         assert!(has_two_or_three_args_and_correct_copy_or_restore(&args));
+    }
+
+    #[test]
+    fn copy_files_from_src_to_dest_copies_single_file() {
+        let base = std::env::temp_dir().join(format!(
+            "gitcopyrestore_test_{}",
+            get_epoch_time()
+        ));
+        let src_root = base.join("src");
+        let dst_root = base.join("dst");
+        let rel_file = "nested/file.txt";
+
+        fs::create_dir_all(src_root.join("nested")).expect("create src nested dir");
+        fs::create_dir_all(&dst_root).expect("create dst dir");
+        fs::write(src_root.join(rel_file), "hello copy").expect("write source file");
+
+        let repo_files: Result<Vec<String>, Box<dyn std::error::Error>> =
+            Ok(vec![rel_file.to_string()]);
+
+        copy_files(
+            true,
+            src_root.to_str().expect("src path utf8"),
+            dst_root.to_str().expect("dst path utf8"),
+            repo_files,
+        );
+
+        let copied = dst_root.join(rel_file);
+        assert!(copied.is_file());
+        let copied_contents = fs::read_to_string(copied).expect("read copied file");
+        assert_eq!(copied_contents, "hello copy");
+
+        let _ = fs::remove_dir_all(base);
     }
 }
