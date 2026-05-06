@@ -27,7 +27,7 @@ fn main() {
     match args[0].as_str() {
         "--copy" => {
             let path = &args[1];
-            handle_copy(path);  // source path
+            handle_copy(path);
         }
         "--restore" => {
             let git_repo = &args[1];
@@ -61,7 +61,11 @@ fn list_tracked_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::
 }
 
 fn handle_copy(path: &str) {
-    println!("Copying from: {path}");
+    let canonical_path = match fs::canonicalize(path) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) => path.to_string(),
+    };
+    println!("Copying from: {canonical_path}");
     let repo_files = list_tracked_repo_files(path);
     mkdir_and_process_files(path, repo_files);
 }
