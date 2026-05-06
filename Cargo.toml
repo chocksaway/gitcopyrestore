@@ -8,4 +8,4 @@ name = "gitcr"
 path = "src/main.rs"
 
 [dependencies]
-git2 = "0.18"
+git2 = "0.20.4"
