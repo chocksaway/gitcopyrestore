@@ -1,3 +1,4 @@
 /target/debug/.cargo-lock
 /.idea/*
 /target/*
+/runs/*

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use git2::Repository;
+use git2::{Repository, Status, StatusOptions};
 
 fn main() {
     const USAGE: &str = "Usage: gitcr --copy path_to_repo | --restore copy_path path_to_git_repo";
@@ -44,15 +44,35 @@ fn main() {
 fn list_tracked_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let repo = Repository::open(repo_path)?;
 
-    // Use the git index so we copy all tracked files in the repository.
-    let index = repo.index()?;
-    let files = index
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(false)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+
+    let statuses = repo.statuses(Some(&mut opts))?;
+    let files = statuses
         .iter()
         .filter_map(|entry| {
-            let path = std::str::from_utf8(&entry.path).ok()?;
+            let status = entry.status();
+            let changed = status.intersects(
+                Status::INDEX_MODIFIED
+                    | Status::INDEX_RENAMED
+                    | Status::INDEX_TYPECHANGE
+                    | Status::WT_MODIFIED
+                    | Status::WT_RENAMED
+                    | Status::WT_TYPECHANGE
+                    | Status::CONFLICTED,
+            );
+
+            if !changed {
+                return None;
+            }
+
+            let path = entry.path()?;
             if path == ".gitignore" {
                 return None;
             }
+
             Some(path.to_string())
         })
         .collect();
@@ -291,6 +311,55 @@ mod tests {
         assert!(restored.is_file());
         let restored_contents = fs::read_to_string(restored).expect("read restored file");
         assert_eq!(restored_contents, "restored");
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn list_tracked_repo_files_returns_only_local_changes() {
+        let base = std::env::temp_dir().join(format!(
+            "gitcopyrestore_status_test_{}_{}",
+            get_epoch_time(),
+            std::process::id()
+        ));
+        let repo_root = base.join("repo");
+        fs::create_dir_all(&repo_root).expect("create repo dir");
+
+        let repo = Repository::init(&repo_root).expect("init repo");
+
+        fs::write(repo_root.join("unchanged.txt"), "same").expect("write unchanged");
+        fs::write(repo_root.join("changed.txt"), "before").expect("write changed before");
+
+        let mut index = repo.index().expect("repo index");
+        index
+            .add_path(Path::new("unchanged.txt"))
+            .expect("add unchanged");
+        index
+            .add_path(Path::new("changed.txt"))
+            .expect("add changed");
+        index.write().expect("write index");
+
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = git2::Signature::now("gitcr-test", "gitcr@test.local").expect("signature");
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .expect("initial commit");
+
+        fs::write(repo_root.join("changed.txt"), "after").expect("modify tracked file");
+        fs::write(repo_root.join("new.txt"), "new").expect("write untracked file");
+
+        // Simulate an untracked run artifact directory that should never be copied.
+        let runs_tmp = repo_root.join("runs/tmp_run/src");
+        fs::create_dir_all(&runs_tmp).expect("create runs dir");
+        fs::write(runs_tmp.join("ignored.txt"), "ignore me").expect("write runs file");
+
+        let files = list_tracked_repo_files(repo_root.to_str().expect("repo path utf8"))
+            .expect("list changed files");
+
+        assert!(files.iter().any(|f| f == "changed.txt"));
+        assert!(!files.iter().any(|f| f == "new.txt"));
+        assert!(!files.iter().any(|f| f == "unchanged.txt"));
+        assert!(!files.iter().any(|f| f.starts_with("runs/")));
 
         let _ = fs::remove_dir_all(base);
     }
