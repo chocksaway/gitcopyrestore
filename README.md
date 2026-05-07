@@ -1,4 +1,4 @@
-Git copy and restore (gitcr) is a Rust command-line tool that allows you to copy files from a local git repo.  They are copied to a runs directory with a timestamp and the name of the git repo. Files can be restored to a git repository from a copy in the runs directory.
+Git copy and restore (gitcr) is a Rust command-line tool that allows you to copy "changed" files from a local git repo.  They are copied to a runs directory with a timestamp and the name of the git repo. Files can be restored to a git repository from a copy in the runs directory.
 
 The tool is designed to handle nested directories.
 
