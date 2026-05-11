@@ -14,11 +14,11 @@ fn main() {
         }
     }
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    //let args = vec!["--copy".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
+    //let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = vec!["--copy".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
     //let args = vec!["--restore".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore/runs/1778082154_gitcopyrestore".to_string(), "/home/milesd-9510/workspace/rust/gitcopyrestore".to_string()];
 
-    if !has_two_or_three_args_and_correct_copy_or_restore(&args) {
+    if !validate_args(&args) {
         println!("Expected 2 or 3 command-line arguments.");
         println!("{USAGE}");
         return;
@@ -39,6 +39,66 @@ fn main() {
             println!("{USAGE}");
         }
     }
+}
+
+fn validate_args(args: &[String]) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+
+    if args[0] != "--copy" && args[0] != "--restore" {
+        return false;
+    }
+
+    // --copy: 2 args (path) or 4 args (path --just file)
+    if args[0] == "--copy" && (args.len() != 2 && args.len() != 4) {
+        return false;
+    }
+
+    // --restore: 3 args (snap_path repo_path) or 5 args (snap_path repo_path --just file)
+    if args[0] == "--restore" && (args.len() != 3 && args.len() != 5) {
+        return false;
+    }
+
+    validate_just(args)
+}
+
+/*
+    Check the args length.  Is there enough for --just value
+ */
+fn validate_just(args: &[String]) -> bool {
+    is_just_valid(args)
+}
+
+fn is_just_valid(args: &[String]) -> bool {
+    let just_pos = args.iter().position(|a| a == "--just");
+
+    match just_pos {
+        Some(pos) => {
+            if pos + 1 < args.len() {
+                is_valid_filename_or_wildcard(&args[pos + 1])
+            } else {
+                false
+            }
+        }
+        None => true,
+    }
+}
+
+
+fn is_valid_filename_or_wildcard(input: &str) -> bool {
+    if input.is_empty() || input == "." || input == ".." {
+        return false;
+    }
+
+    // Keep this as filename-only; reject path separators.
+    if input.contains('/') || input.contains('\\') || input.contains('\0') {
+        return false;
+    }
+
+    input.chars().all(|c| {
+        c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '*' | '?')
+    })
 }
 
 fn list_tracked_repo_files(repo_path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -205,55 +265,53 @@ fn collect_relative_files_recursive(
 
     Ok(())
 }
-fn has_two_or_three_args_and_correct_copy_or_restore(args: &[String]) -> bool {
-    if args.len() < 2 || args.len() > 3 {
-        return false;
-    }
 
-    if args[0] != "--copy" && args[0] != "--restore" {
-        return false;
-    }
-
-    // --copy requires exactly 2 args
-    if args[0] == "--copy" && args.len() != 2 {
-        return false;
-    }
-
-    // --restore requires exactly 3 args
-    if args[0] == "--restore" && args.len() != 3 {
-        return false;
-    }
-
-    true
-}
 
 #[cfg(test)]
 mod tests {
     use super::*; // import items from parent module
 
     #[test]
+    fn check_arg_length_with_just_but_no_file_or_wildcard() {
+        let args = vec!["--copy".to_string(), "path".to_string(), "--just".to_string()];
+        let valid_just = validate_just(&args);
+
+        assert!(!valid_just);
+    }
+
+    #[test]
+    fn check_arg_length_with_just_with_valid_file_or_wildcard() {
+        let args = vec!["--copy".to_string(), "path".to_string(), "--just".to_string(), "test.txt".to_string()];
+        let valid_just = validate_just(&args);
+
+        assert!(valid_just);
+    }
+
+
+
+    #[test]
     fn checks_arg_count_and_make_sure_copy_or_restore() {
         let args = vec!["--copy".to_string(), "path".to_string()];
-        let args_val = has_two_or_three_args_and_correct_copy_or_restore(&args);
+        let args_val = validate_args(&args);
         assert!(args_val);
     }
 
     #[test]
     fn rejects_wrong_arg_count() {
         let args = vec!["2".to_string()];
-        assert!(!has_two_or_three_args_and_correct_copy_or_restore(&args));
+        assert!(!validate_args(&args));
     }
 
     #[test]
     fn check_there_are_three_args_for_a_restore() {
         let args = vec!["--restore".to_string(), "path".to_string(), "repo".to_string()];
-        assert!(has_two_or_three_args_and_correct_copy_or_restore(&args));
+        assert!(validate_args(&args));
     }
 
     #[test]
     fn reject_restore_with_only_two_args() {
         let args = vec!["--restore".to_string(), "path".to_string()];
-        assert!(!has_two_or_three_args_and_correct_copy_or_restore(&args));
+        assert!(!validate_args(&args));
     }
 
     #[test]
